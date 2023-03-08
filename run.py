@@ -10,12 +10,16 @@ if __name__ == "__main__":
     parser.add_argument('-coverage', '--coverage', type=float, default=0.5, help='percentage of points to inspect (inspection planning)')
     args = parser.parse_args()
 
-    # prepare the map
-    planning_env = MapEnvironment(json_file=args.map)
+    # # prepare the map
+    # planning_env = MapEnvironment(json_file=args.map)
 
-    # setup and execute the planner
-    planner = TaskInspectionPlanner(planning_env=planning_env, coverage=args.coverage)
+    # # setup and execute the planner
+    # planner = TaskInspectionPlanner(planning_env=planning_env, coverage=args.coverage)
+    # plan, plan_timestamps, path_coverage, path_cost, computation_time = planner.plan()
+    planning_env = MapEnvironment(json_file='map_plan_p1.json')
+    planner = TaskInspectionPlanner(planning_env=planning_env, coverage=0.1)
     plan, plan_timestamps, path_coverage, path_cost, computation_time = planner.plan()
+
 
     # visualize the final path
     planner.planning_env.visualize_plan(plan=plan, plan_timestamps=plan_timestamps)

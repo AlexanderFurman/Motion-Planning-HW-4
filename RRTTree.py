@@ -20,17 +20,17 @@ class RRTTree(object):
         '''
         return 0
 
-    def add_vertex(self, config, inspected_points=None):
+    def add_vertex(self, config, timestamp, inspected_timestamps=None):
         '''
         Add a state to the tree.
         @param config Configuration to add to the tree.
         '''
         vid = len(self.vertices)
-        self.vertices[vid] = RRTVertex(config=config, inspected_points=inspected_points)
+        self.vertices[vid] = RRTVertex(config=config, timestamp = timestamp, inspected_timestamps=inspected_timestamps)
 
         # check if vertex has the highest coverage so far, and replace if so
         if self.task == "ip":
-            v_coverage = self.planning_env.compute_coverage(inspected_points=inspected_points)
+            v_coverage = self.compute_coverage(inspected_timestamps=inspected_timestamps)
             if v_coverage > self.max_coverage:
                 self.max_coverage = v_coverage
                 self.max_coverage_id = vid
@@ -76,7 +76,7 @@ class RRTTree(object):
             return valid_idxs[0]
         return None
 
-    def get_nearest_config(self, config):
+    def get_nearest_config(self, config, timestamp):
         '''
         Find the nearest vertex for the given config and returns its state index and configuration
         @param config Sampled configuration.
@@ -84,20 +84,25 @@ class RRTTree(object):
         # compute distances from all vertices
         dists = []
         for _, vertex in self.vertices.items():
-            dists.append(self.planning_env.robot.compute_distance(config, vertex.config))
-
+            if vertex.timestamp < timestamp:
+                dists.append(self.planning_env.insp_robot.compute_distance(config, vertex.config))
         # retrieve the id of the nearest vertex
         vid, _ = min(enumerate(dists), key=operator.itemgetter(1))
 
-        return vid, self.vertices[vid].config
+        return vid, self.vertices[vid].config, self.vertices[vid].timestamp
+
+    def compute_coverage(self, inspected_timestamps):
+        total = len(self.planning_env.gripper_plan)
+        return len(inspected_timestamps)/total
 
 class RRTVertex(object):
 
-    def __init__(self, config, cost=0, inspected_points=None):
+    def __init__(self, config, timestamp, cost=0, inspected_timestamps=None):
 
         self.config = config
         self.cost = cost
-        self.inspected_points = inspected_points
+        self.inspected_timestamps = inspected_timestamps
+        self.timestamp = timestamp
 
     def set_cost(self, cost):
 
