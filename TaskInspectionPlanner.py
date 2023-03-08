@@ -3,8 +3,11 @@ import time
 from RRTTree import RRTTree
 import json
 from copy import deepcopy
+from scipy.optimize import minimize
+from matplotlib import pyplot as plt
+import matplotlib.image as mpimg
 
-
+np.random.seed(1)
 
 class TaskInspectionPlanner(object):
 
@@ -27,10 +30,15 @@ class TaskInspectionPlanner(object):
         #other robot's configs
         self.gripper_configs = self.planning_env.gripper_plan
         self.timestamps = np.array([i for i in range(len(self.gripper_configs))])
+        print('last timestamp = ', self.timestamps[-1])
 
         self.current_coverage = 0
 
         self.saved_configs = []
+
+        #Loss function hyper parameters
+        self.epsilon_pos = 5
+        self.epsilon_angle = np.deg2rad(3)
 
     def plan(self):
         '''
@@ -52,15 +60,16 @@ class TaskInspectionPlanner(object):
             new_timestamp = np.random.choice(self.timestamps[1:])
 
             # print(f'new_config = {new_config}, new_timestamp = {new_timestamp}')
-
+            flag = False
             # goal biased sample:
             if (np.random.uniform(0, 1) < self.goal_prob):
-                pass
+                new_config, new_timestamp = self.goal_sampling()
+                flag = True
 
             near_config_idx, near_config, near_timestamp = self.tree.get_nearest_config(new_config, new_timestamp)
 
             extended_config, extended_timestamp = self.extend(near_config, new_config, near_timestamp, new_timestamp)
-            print(f'extended config = {extended_config}, extended timestamp = {extended_timestamp}')
+            # print(f'extended config = {extended_config}, extended timestamp = {extended_timestamp}')
             if extended_config is None:
                 # print('fucked config =', extended_config)
                 continue
@@ -68,16 +77,23 @@ class TaskInspectionPlanner(object):
 
             no_collision = (self.planning_env.config_validity_checker(extended_config, 'inspector') and self.planning_env.edge_validity_checker(near_config, extended_config, 'inspector'))
             if no_collision:
-                print('in here!')
+                # if flag == True:
+                    # print('adding goal to tree!')
+
+                # print('in here!')
 
                 old_inspected_timestamps = self.tree.vertices[near_config_idx].inspected_timestamps
-                current_inspected_timestamps = deepcopy(old_inspected_timestamps)
                 if self.planning_env.is_gripper_inspected_from_vertex(extended_config, extended_timestamp):
-                    current_inspected_timestamps.append(extended_timestamp)
+                    current_inspected_timestamps = self.tree.compute_union(old_inspected_timestamps, [extended_timestamp])
+                else:
+                    current_inspected_timestamps = deepcopy(old_inspected_timestamps)
 
                 #add to collection of configs which managed to see a new POI
                 if len(old_inspected_timestamps) < len(current_inspected_timestamps):
                     self.save_config(extended_config)
+                    print('improved')
+                    print(f'vertex parent info: \n timestamp: {self.tree.vertices[near_config_idx].timestamp} \n inspected timestamps: {old_inspected_timestamps}\n')
+                    print(f'new vertex info: \n timestamp: {extended_timestamp} \n inspected timestamps: {current_inspected_timestamps}\n')
 
                 extended_config_idx = self.tree.add_vertex(extended_config, extended_timestamp, inspected_timestamps=current_inspected_timestamps)
                 edge_cost = np.linalg.norm(near_config - extended_config) #POSSIBLY CHANGE THIS
@@ -88,7 +104,6 @@ class TaskInspectionPlanner(object):
                     self.current_coverage = self.tree.max_coverage
 
             # print(f'current size of tree = {len(self.tree.vertices)}')
-
 
         plan = self.find_plan()
         # self.stats[self.current_stats_mode].append([self.compute_cost(plan), time.time()-start_time])
@@ -147,8 +162,8 @@ class TaskInspectionPlanner(object):
 
         total_length = np.linalg.norm(step_dir)
         ext_length = np.linalg.norm(extended_config - near_config)
-        extended_timestamp = near_timestamp + int((ext_length/total_length)*rand_timestamp)
-
+        extended_timestamp = near_timestamp + int((ext_length/total_length)*(rand_timestamp-near_timestamp))
+        # print(f'near timestamp = {near_timestamp}, rand timestamp = {rand_timestamp}, extended timestamp = {extended_timestamp}')
         return extended_config, extended_timestamp
 
     def find_plan(self):
@@ -171,3 +186,50 @@ class TaskInspectionPlanner(object):
             config = [float(string) for string in strings]
             configs.append(config)
         return np.array(configs)
+
+    def loss_function(self, config, sample_config):
+        # print('type of config = ', type(config))
+        gripper_pos = self.planning_env.grip_robot.compute_forward_kinematics(sample_config)[-1]
+        insp_pos = self.planning_env.insp_robot.compute_forward_kinematics(config)
+
+        camera_pos = insp_pos[-1]
+        final_link_pos = insp_pos[-2]
+
+        r_max = self.planning_env.insp_robot.vis_dist
+
+        vec_grip_to_link = final_link_pos - gripper_pos
+        vec_grip_to_camera = camera_pos - gripper_pos
+
+        # L_pos = max(np.linalg.norm(vec_grip_to_camera) - (r_max + self.epsilon_pos), 0)
+        L_pos = np.linalg.norm(vec_grip_to_camera)
+        # print('L_POS = ', L_pos)
+        L_angle = np.abs(np.arcsin((np.cross(vec_grip_to_camera, vec_grip_to_link))/(np.linalg.norm(vec_grip_to_link)*np.linalg.norm(vec_grip_to_camera)))) * self.epsilon_angle
+
+        return L_pos + L_angle
+
+    def goal_sampling(self):
+        sample_timestamp = np.random.randint(1, self.timestamps[-1])
+        sample_config = self.gripper_configs[sample_timestamp]
+        theta0 = np.array([-np.deg2rad(150), 0, 0, 0])
+        bounds = [(-np.pi, np.pi) for _ in range(self.planning_env.insp_robot.dim)]
+        result = minimize(fun=self.loss_function, x0=theta0, args=(sample_config, ), bounds=bounds)
+        return result.x, sample_timestamp
+
+    def goal_sampling_example(self):
+        sample_timestamp = np.random.randint(1, self.timestamps[-1])
+        sample_config = self.gripper_configs[sample_timestamp]
+        theta0 = np.array([-np.deg2rad(150), 0, 0, 0])
+        bounds = [(-np.pi, np.pi) for _ in range(self.planning_env.insp_robot.dim)]
+        result = minimize(fun=self.loss_function, x0=theta0, args=(sample_config, ), bounds=bounds)
+        
+        self.planning_env.visualize_map(gripper_config=sample_config, inspector_config=result.x)
+        
+        grip_pos = self.planning_env.grip_robot.compute_forward_kinematics(sample_config)[-1]
+        insp_pos = self.planning_env.insp_robot.compute_forward_kinematics(result.x)[-1]
+        distance = np.linalg.norm(grip_pos-insp_pos)
+        print('DISTANCE = ', distance)
+        print('CAN HE SEE GRIPGRIP??? ', (distance < self.planning_env.insp_robot.vis_dist))
+        print('YE BUT LIKE< REALLY??< ', self.planning_env.config_validity_checker(result.x, 'inspector'))
+        print(result)
+        return self.planning_env.is_gripper_inspected_from_vertex(result.x, sample_timestamp)
+

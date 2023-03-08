@@ -21,8 +21,8 @@ if __name__ == "__main__":
     plan, plan_timestamps, path_coverage, path_cost, computation_time = planner.plan()
 
 
-    # visualize the final path
+    # # visualize the final path
     planner.planning_env.visualize_plan(plan=plan, plan_timestamps=plan_timestamps)
 
-    # print 
-    write_plan_stats(path_coverage=path_coverage, path_cost=path_cost, computation_time=computation_time)
+    # # print 
+    # write_plan_stats(path_coverage=path_coverage, path_cost=path_cost, computation_time=computation_time)

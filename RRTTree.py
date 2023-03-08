@@ -95,6 +95,9 @@ class RRTTree(object):
         total = len(self.planning_env.gripper_plan)
         return len(inspected_timestamps)/total
 
+    def compute_union(self, inspected_points_1, inspected_points_2):
+        return list(set(inspected_points_1 + inspected_points_2))
+
 class RRTVertex(object):
 
     def __init__(self, config, timestamp, cost=0, inspected_timestamps=None):

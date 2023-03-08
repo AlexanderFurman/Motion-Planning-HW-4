@@ -315,7 +315,7 @@ class MapEnvironment(object):
 
         # show map
         if show_map:
-            #plt.show() # replace savefig with show if you want to display map actively
+            # plt.show() # replace savefig with show if you want to display map actively
             plt.savefig('map.png')
         
         return plt
