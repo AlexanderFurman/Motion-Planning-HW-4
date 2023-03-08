@@ -7,7 +7,7 @@ from scipy.optimize import minimize
 from matplotlib import pyplot as plt
 import matplotlib.image as mpimg
 
-np.random.seed(1)
+np.random.seed(2)
 
 class TaskInspectionPlanner(object):
 
@@ -99,7 +99,7 @@ class TaskInspectionPlanner(object):
                 edge_cost = np.linalg.norm(near_config - extended_config) #POSSIBLY CHANGE THIS
                 self.tree.add_edge(near_config_idx, extended_config_idx, edge_cost)
 
-                print(f'parent timestamp = {near_timestamp}, extended_timestamp = {extended_timestamp}')
+                #print(f'parent timestamp = {near_timestamp}, extended_timestamp = {extended_timestamp}')
 
                 self.find_inspected_from_edge(self.tree.vertices[near_config_idx], self.tree.vertices[extended_config_idx])
 
@@ -199,8 +199,11 @@ class TaskInspectionPlanner(object):
         inspected_timestamps = []
         # iterate over timestamps and compute for each if gripper was inspected
         for timestamp in range(int(np.ceil(timestamp1)),int(np.floor(timestamp2))+1):
-
+            if timestamp2 == timestamp1:
+                continue
             # compute interpolated config for the requested time
+            #print("timestamp1",timestamp1)
+            #print("timestamp2", timestamp2)
             delta_config = ((timestamp - timestamp1) / (timestamp2 - timestamp1)) * (inspector_config2 - inspector_config1)
             current_config = inspector_config1 + delta_config
 
