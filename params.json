@@ -1,5 +1,5 @@
 {
-    "ext_mode": "E1",
-    "goal_prob": 0.9,
+    "ext_mode": "E2",
+    "goal_prob": 0.2,
     "config_file": "plan_mp_p1.txt"
 }

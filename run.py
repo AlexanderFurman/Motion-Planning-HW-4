@@ -16,10 +16,11 @@ if __name__ == "__main__":
     # # setup and execute the planner
     # planner = TaskInspectionPlanner(planning_env=planning_env, coverage=args.coverage)
     # plan, plan_timestamps, path_coverage, path_cost, computation_time = planner.plan()
-    planning_env = MapEnvironment(json_file='map_plan_p1.json')
-    planner = TaskInspectionPlanner(planning_env=planning_env, coverage=0.1)
+    planning_env = MapEnvironment(json_file='map_plan_p2.json')
+    planner = TaskInspectionPlanner(planning_env=planning_env, coverage=0.6)
     plan, plan_timestamps, path_coverage, path_cost, computation_time = planner.plan()
 
+    # plan = []
 
     # # visualize the final path
     planner.planning_env.visualize_plan(plan=plan, plan_timestamps=plan_timestamps)

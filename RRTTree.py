@@ -86,6 +86,8 @@ class RRTTree(object):
         for _, vertex in self.vertices.items():
             if vertex.timestamp < timestamp:
                 dists.append(self.planning_env.insp_robot.compute_distance(config, vertex.config))
+            else:
+                dists.append(1000000000)
         # retrieve the id of the nearest vertex
         vid, _ = min(enumerate(dists), key=operator.itemgetter(1))
 
@@ -97,6 +99,7 @@ class RRTTree(object):
 
     def compute_union(self, inspected_points_1, inspected_points_2):
         return list(set(inspected_points_1 + inspected_points_2))
+
 
 class RRTVertex(object):
 

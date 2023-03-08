@@ -89,15 +89,19 @@ class TaskInspectionPlanner(object):
                     current_inspected_timestamps = deepcopy(old_inspected_timestamps)
 
                 #add to collection of configs which managed to see a new POI
-                if len(old_inspected_timestamps) < len(current_inspected_timestamps):
-                    self.save_config(extended_config)
-                    print('improved')
-                    print(f'vertex parent info: \n timestamp: {self.tree.vertices[near_config_idx].timestamp} \n inspected timestamps: {old_inspected_timestamps}\n')
-                    print(f'new vertex info: \n timestamp: {extended_timestamp} \n inspected timestamps: {current_inspected_timestamps}\n')
+                # if len(old_inspected_timestamps) < len(current_inspected_timestamps):
+                #     self.save_config(extended_config)
+                    # print('improved')
+                    # print(f'vertex parent info: \n timestamp: {self.tree.vertices[near_config_idx].timestamp} \n inspected timestamps: {old_inspected_timestamps}\n')
+                    # print(f'new vertex info: \n timestamp: {extended_timestamp} \n inspected timestamps: {current_inspected_timestamps}\n')
 
                 extended_config_idx = self.tree.add_vertex(extended_config, extended_timestamp, inspected_timestamps=current_inspected_timestamps)
                 edge_cost = np.linalg.norm(near_config - extended_config) #POSSIBLY CHANGE THIS
                 self.tree.add_edge(near_config_idx, extended_config_idx, edge_cost)
+
+                print(f'parent timestamp = {near_timestamp}, extended_timestamp = {extended_timestamp}')
+
+                self.find_inspected_from_edge(self.tree.vertices[near_config_idx], self.tree.vertices[extended_config_idx])
 
                 if self.tree.max_coverage > self.current_coverage:
                     print(f"current max coverage is {self.tree.max_coverage}")
@@ -105,7 +109,7 @@ class TaskInspectionPlanner(object):
 
             # print(f'current size of tree = {len(self.tree.vertices)}')
 
-        plan = self.find_plan()
+        plan_configs, plan_timestamps = self.find_plan()
         # self.stats[self.current_stats_mode].append([self.compute_cost(plan), time.time()-start_time])
 
 
@@ -114,7 +118,7 @@ class TaskInspectionPlanner(object):
         computation_time = time.time()-start_time
 
         # print total path cost and time
-        print('Total cost of path: {:.2f}'.format(self.compute_cost(plan)))
+        print('Total cost of path: {:.2f}'.format(self.compute_cost(plan_configs)))
         print('Total time: {:.2f}'.format(time.time()-start_time))
 
         coverage = self.current_coverage
@@ -171,13 +175,16 @@ class TaskInspectionPlanner(object):
         current_idx = self.tree.max_coverage_id
 
         plan = [self.tree.vertices[current_idx].config]
+        timestamps = [self.tree.vertices[current_idx].timestamp]
 
         while current_idx != start_idx:
             current_idx = self.tree.edges[current_idx]
             plan.append(self.tree.vertices[current_idx].config)
+            timestamps.append(self.tree.vertices[current_idx].timestamp)
         print("plan =\n", plan)
         plan.reverse()
-        return plan
+        timestamps.reverse()
+        return plan, timestamps
 
     def get_configs(self, filename):
         configs = []
@@ -186,6 +193,25 @@ class TaskInspectionPlanner(object):
             config = [float(string) for string in strings]
             configs.append(config)
         return np.array(configs)
+
+    def find_inspected_from_edge(self, vertex_near, vertex_extended):
+        inspector_config1, inspector_config2, timestamp1, timestamp2 = vertex_near.config, vertex_extended.config, vertex_near.timestamp, vertex_extended.timestamp
+        inspected_timestamps = []
+        # iterate over timestamps and compute for each if gripper was inspected
+        for timestamp in range(int(np.ceil(timestamp1)),int(np.floor(timestamp2))+1):
+
+            # compute interpolated config for the requested time
+            delta_config = ((timestamp - timestamp1) / (timestamp2 - timestamp1)) * (inspector_config2 - inspector_config1)
+            current_config = inspector_config1 + delta_config
+
+            # check if gripper is inspected and update accordingly
+            is_inspected = self.planning_env.is_gripper_inspected_from_vertex(inspector_config=current_config, timestamp=timestamp)
+            if is_inspected:
+                inspected_timestamps.append(timestamp)
+
+        total_inspected = self.tree.compute_union(vertex_extended.inspected_timestamps, inspected_timestamps)
+        vertex_extended.inspected_timestamps = total_inspected
+            
 
     def loss_function(self, config, sample_config):
         # print('type of config = ', type(config))
