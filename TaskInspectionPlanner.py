@@ -8,6 +8,7 @@ from matplotlib import pyplot as plt
 import matplotlib.image as mpimg
 
 np.random.seed(1)
+# np.random.seed(2)
 
 class TaskInspectionPlanner(object):
 
@@ -38,7 +39,7 @@ class TaskInspectionPlanner(object):
 
         #Loss function hyper parameters
         self.epsilon_pos = 5
-        self.epsilon_angle = np.deg2rad(3)
+        self.epsilon_angle = 1 #np.deg2rad(3)
 
     def plan(self):
         '''
@@ -54,12 +55,14 @@ class TaskInspectionPlanner(object):
         self.tree.add_vertex(self.planning_env.inspector_start, timestamp=0, inspected_timestamps=[])
 
         #iteratively add vertices to the rrt
-        while self.tree.max_coverage < self.coverage:
+        while self.tree.max_coverage < self.coverage and (time.time() - start_time) < 60 :
 
             new_config = np.array([np.random.uniform(-np.pi, np.pi) for _ in range(self.planning_env.insp_robot.dim)])
-            new_timestamp = np.random.choice(self.timestamps[1:])
+            # new_timestamp = np.random.choice(self.timestamps[1:])
 
-            # print(f'new_config = {new_config}, new_timestamp = {new_timestamp}')
+            # new_timestamp = np.random.choice(self.timestamps[max(1, self.tree.max_timestamp-20):self.tree.max_timestamp+30])
+            new_timestamp = np.random.choice(self.timestamps[max(1, self.tree.max_timestamp-10):self.tree.max_timestamp+30])
+
             flag = False
             # goal biased sample:
             if (np.random.uniform(0, 1) < self.goal_prob):
@@ -99,7 +102,7 @@ class TaskInspectionPlanner(object):
                 edge_cost = np.linalg.norm(near_config - extended_config) #POSSIBLY CHANGE THIS
                 self.tree.add_edge(near_config_idx, extended_config_idx, edge_cost)
 
-                print(f'parent timestamp = {near_timestamp}, extended_timestamp = {extended_timestamp}')
+                # print(f'parent timestamp = {near_timestamp}, extended_timestamp = {extended_timestamp}')
 
                 self.find_inspected_from_edge(self.tree.vertices[near_config_idx], self.tree.vertices[extended_config_idx])
 
@@ -116,12 +119,12 @@ class TaskInspectionPlanner(object):
         # store total path cost and time
         path_cost = self.compute_cost(plan_configs)
         computation_time = time.time()-start_time
+        coverage = self.current_coverage
 
         # print total path cost and time
+        print('Total Coverage: {:.2f}'.format(coverage))
         print('Total cost of path: {:.2f}'.format(self.compute_cost(plan_configs)))
         print('Total time: {:.2f}'.format(time.time()-start_time))
-
-        coverage = self.current_coverage
 
         return np.array(plan_configs), np.array(plan_timestamps), coverage, path_cost, computation_time
 
@@ -164,10 +167,10 @@ class TaskInspectionPlanner(object):
         extended_config = near_config + step
         extended_config = np.array(extended_config)
 
-        total_length = np.linalg.norm(step_dir)
         ext_length = np.linalg.norm(extended_config - near_config)
-        extended_timestamp = near_timestamp + int((ext_length/total_length)*(rand_timestamp-near_timestamp))
-        # print(f'near timestamp = {near_timestamp}, rand timestamp = {rand_timestamp}, extended timestamp = {extended_timestamp}')
+        # extended_timestamp = near_timestamp + int((ext_length/length)*(rand_timestamp-near_timestamp)) # THIS CAN OCASIONALLY CAUSE THE EXTENDED TIMESTAMP TO BE EQUAL TO NEAR TIMESTAMP
+        extended_timestamp = near_timestamp + int(np.ceil((ext_length/length)*(rand_timestamp-near_timestamp)))
+
         return extended_config, extended_timestamp
 
     def find_plan(self):
@@ -213,7 +216,7 @@ class TaskInspectionPlanner(object):
         vertex_extended.inspected_timestamps = total_inspected
             
 
-    def loss_function(self, config, sample_config):
+    def loss_function(self, config, sample_config, sample_timestamp):
         # print('type of config = ', type(config))
         gripper_pos = self.planning_env.grip_robot.compute_forward_kinematics(sample_config)[-1]
         insp_pos = self.planning_env.insp_robot.compute_forward_kinematics(config)
@@ -226,19 +229,27 @@ class TaskInspectionPlanner(object):
         vec_grip_to_link = final_link_pos - gripper_pos
         vec_grip_to_camera = camera_pos - gripper_pos
 
-        # L_pos = max(np.linalg.norm(vec_grip_to_camera) - (r_max + self.epsilon_pos), 0)
         L_pos = np.linalg.norm(vec_grip_to_camera)
-        # print('L_POS = ', L_pos)
-        L_angle = np.abs(np.arcsin((np.cross(vec_grip_to_camera, vec_grip_to_link))/(np.linalg.norm(vec_grip_to_link)*np.linalg.norm(vec_grip_to_camera)))) * self.epsilon_angle
+        angle = np.arcsin((np.cross(vec_grip_to_camera, vec_grip_to_link))/(np.linalg.norm(vec_grip_to_link)*np.linalg.norm(vec_grip_to_camera)))
+        # print(f'angle = {angle}')
+        if abs(angle) < self.planning_env.insp_robot.ee_fov:
+            L_angle = 0
+        else:
+            L_angle = np.abs(np.arcsin((np.cross(vec_grip_to_camera, vec_grip_to_link))/(np.linalg.norm(vec_grip_to_link)*np.linalg.norm(vec_grip_to_camera)))) * self.epsilon_angle
 
-        return L_pos + L_angle
+        L_obstacle = (1-self.planning_env.is_gripper_inspected_from_vertex(config, sample_timestamp))*1000
+        # print(f'Loss = {L_pos + L_angle}')
+
+        return L_pos + L_angle + L_obstacle
 
     def goal_sampling(self):
-        sample_timestamp = np.random.randint(1, self.timestamps[-1])
+        # sample_timestamp = np.random.choice(self.timestamps[1:])
+        # sample_timestamp = np.random.choice(self.timestamps[max(1, self.tree.max_timestamp-20):self.tree.max_timestamp+30])
+        sample_timestamp = np.random.choice(self.timestamps[max(1, self.tree.max_timestamp-10):self.tree.max_timestamp+30])
         sample_config = self.gripper_configs[sample_timestamp]
         theta0 = np.array([-np.deg2rad(150), 0, 0, 0])
         bounds = [(-np.pi, np.pi) for _ in range(self.planning_env.insp_robot.dim)]
-        result = minimize(fun=self.loss_function, x0=theta0, args=(sample_config, ), bounds=bounds)
+        result = minimize(fun=self.loss_function, x0=theta0, args=(sample_config, sample_timestamp), bounds=bounds)
         return result.x, sample_timestamp
 
     def goal_sampling_example(self):

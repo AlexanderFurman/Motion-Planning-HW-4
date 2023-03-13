@@ -1,4 +1,5 @@
 import operator
+import numpy as np
 
 class RRTTree(object):
     
@@ -13,6 +14,7 @@ class RRTTree(object):
         if self.task == "ip":
             self.max_coverage = 0
             self.max_coverage_id = 0
+            self.max_timestamp = 0
 
     def get_root_id(self):
         '''
@@ -34,6 +36,8 @@ class RRTTree(object):
             if v_coverage > self.max_coverage:
                 self.max_coverage = v_coverage
                 self.max_coverage_id = vid
+            if timestamp > self.max_timestamp:
+                self.max_timestamp = timestamp
 
         return vid
 
@@ -85,7 +89,8 @@ class RRTTree(object):
         dists = []
         for _, vertex in self.vertices.items():
             if vertex.timestamp < timestamp:
-                dists.append(self.planning_env.insp_robot.compute_distance(config, vertex.config))
+                # dists.append(self.planning_env.insp_robot.compute_distance(config, vertex.config))
+                dists.append(self.compute_distance_with_time(vertex.config, vertex.timestamp, config, timestamp))
             else:
                 dists.append(1000000000)
         # retrieve the id of the nearest vertex
@@ -99,6 +104,24 @@ class RRTTree(object):
 
     def compute_union(self, inspected_points_1, inspected_points_2):
         return list(set(inspected_points_1 + inspected_points_2))
+
+    def compute_distance_with_time(self, config1, timestamp1, config2, timestamp2):
+        total_timestamps = 370
+        vec1 = np.append(config1, 2*np.pi*timestamp1/total_timestamps)
+        vec2 = np.append(config2, 2*np.pi*timestamp2/total_timestamps)
+        distance = np.linalg.norm(vec2 - vec1)
+        return distance
+
+
+
+    # def get_max_timestamp(self):
+    #     max = 0
+    #     for vid in self.vertices:
+    #         if self.vertices[vid].timestamp > max:
+    #             max = self.vertices[vid].timestamp
+
+    #     return max
+
 
 
 class RRTVertex(object):
