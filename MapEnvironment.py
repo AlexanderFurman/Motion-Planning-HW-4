@@ -111,6 +111,7 @@ class MapEnvironment(object):
         @param robot_type The type of the robot to return the answer for.
         '''
         # interpolate between first config and second config to verify that there is no collision during the motion
+        #print("im here")
         interpolated_configs, steps = compute_inner_interpolated_configurations(config1=config1, config2=config2)
         if interpolated_configs is not None:
             

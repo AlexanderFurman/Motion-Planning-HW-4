@@ -10,7 +10,6 @@ def compute_inner_interpolated_configurations(config1, config2):
     # compute number of steps
     required_diff = 0.01
     interpolation_steps = int(np.linalg.norm(config2 - config1)//required_diff) - 1
-
     # return interpolated configurations
     if interpolation_steps > 0:
         return np.linspace(start=config1, stop=config2, num=interpolation_steps+2), interpolation_steps

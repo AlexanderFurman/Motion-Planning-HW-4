@@ -107,9 +107,12 @@ class RRTTree(object):
 
     def compute_distance_with_time(self, config1, timestamp1, config2, timestamp2):
         total_timestamps = 370
-        vec1 = np.append(config1, 2*np.pi*timestamp1/total_timestamps)
-        vec2 = np.append(config2, 2*np.pi*timestamp2/total_timestamps)
+        # vec1 = np.append(config1, 2*np.pi*timestamp1/total_timestamps)
+        # vec2 = np.append(config2, 2*np.pi*timestamp2/total_timestamps)
+        vec1 = np.append(config1, np.pi*timestamp1/total_timestamps)
+        vec2 = np.append(config2, np.pi*timestamp2/total_timestamps)
         distance = np.linalg.norm(vec2 - vec1)
+
         return distance
 
 
