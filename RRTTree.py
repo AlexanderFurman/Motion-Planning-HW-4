@@ -89,8 +89,8 @@ class RRTTree(object):
         dists = []
         for _, vertex in self.vertices.items():
             if vertex.timestamp < timestamp:
-                # dists.append(self.planning_env.insp_robot.compute_distance(config, vertex.config))
-                dists.append(self.compute_distance_with_time(vertex.config, vertex.timestamp, config, timestamp))
+                dists.append(self.planning_env.insp_robot.compute_distance(config, vertex.config))
+                # dists.append(self.compute_distance_with_time(vertex.config, vertex.timestamp, config, timestamp))
             else:
                 dists.append(1000000000)
         # retrieve the id of the nearest vertex

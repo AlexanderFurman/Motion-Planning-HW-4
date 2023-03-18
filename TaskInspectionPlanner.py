@@ -7,7 +7,7 @@ from scipy.optimize import minimize
 from matplotlib import pyplot as plt
 import matplotlib.image as mpimg
 
-np.random.seed(1)
+# np.random.seed(1)
 # np.random.seed(2)
 
 class TaskInspectionPlanner(object):
@@ -41,6 +41,13 @@ class TaskInspectionPlanner(object):
         self.epsilon_pos = 5
         self.epsilon_angle = 1 #np.deg2rad(3)
 
+        self.stats = []
+
+    def reset(self):
+        self.tree = RRTTree(self.planning_env, task="ip")
+        self.saved_configs = []
+        self.current_coverage = 0
+
     def plan(self):
         '''
         Compute and return the plan. The function should return a numpy array containing the states in the configuration space.
@@ -48,20 +55,22 @@ class TaskInspectionPlanner(object):
         start_time = time.time()
 
         # initialize an empty plan.
-        plan_configs, plan_timestamps = [], []
+        # plan_configs, plan_timestamps = [], []
+
+        path_cost, computation_time, coverage = [], [], []
 
 
         #add start node
         self.tree.add_vertex(self.planning_env.inspector_start, timestamp=0, inspected_timestamps=[])
 
         #iteratively add vertices to the rrt
-        while self.tree.max_coverage < self.coverage and (time.time() - start_time) < 60*3 :
+        while self.tree.max_coverage < self.coverage and (time.time() - start_time) < 60:
 
             new_config = np.array([np.random.uniform(-np.pi, np.pi) for _ in range(self.planning_env.insp_robot.dim)])
-            # new_timestamp = np.random.choice(self.timestamps[1:])
+            new_timestamp = np.random.choice(self.timestamps[1:])
 
             # new_timestamp = np.random.choice(self.timestamps[max(1, self.tree.max_timestamp-20):self.tree.max_timestamp+30])
-            new_timestamp = np.random.choice(self.timestamps[max(1, self.tree.max_timestamp-10):self.tree.max_timestamp+30]) #CURRENTLY USING
+            # new_timestamp = np.random.choice(self.timestamps[max(1, self.tree.max_timestamp-10):self.tree.max_timestamp+30]) #CURRENTLY USING
             # new_timestamp = np.random.choice(self.timestamps[1:])
 
             flag = False
@@ -111,11 +120,18 @@ class TaskInspectionPlanner(object):
                     print(f"current max coverage is {self.tree.max_coverage}")
                     self.current_coverage = self.tree.max_coverage
 
-            # print(f'current size of tree = {len(self.tree.vertices)}')
+                    # store total path cost and time
+                    path_cost.append(self.compute_cost(self.find_plan()[0]))
+                    computation_time.append(time.time()-start_time)
+                    coverage.append(self.current_coverage)
+
+
+        self.stats.append([path_cost, computation_time, coverage])
+
 
         plan_configs, plan_timestamps = self.find_plan()
+    
         # self.stats[self.current_stats_mode].append([self.compute_cost(plan), time.time()-start_time])
-
 
         # store total path cost and time
         path_cost = self.compute_cost(plan_configs)
@@ -134,15 +150,12 @@ class TaskInspectionPlanner(object):
         Compute and return the plan cost, which is the sum of the distances between steps in the configuration space.
         @param plan A given plan for the robot.
         '''
+
         # compute cost of a given path
         plan_cost = 0.0
         for i in range(len(plan)-1):
             plan_cost += self.planning_env.insp_robot.compute_distance(plan[i], plan[i+1])
         return plan_cost
-
-    def compute_edge_cost(self, config1, timestamp1, config2, timestamp2):
-        #create this class, if you are interested in adding the differences in timestamps to the to the cost
-        pass
 
     def save_config(self, config):
         self.saved_configs.append(config)
@@ -185,7 +198,7 @@ class TaskInspectionPlanner(object):
             current_idx = self.tree.edges[current_idx]
             plan.append(self.tree.vertices[current_idx].config)
             timestamps.append(self.tree.vertices[current_idx].timestamp)
-        print("plan =\n", plan)
+        # print("plan =\n", plan)
         plan.reverse()
         timestamps.reverse()
         return plan, timestamps
@@ -251,9 +264,9 @@ class TaskInspectionPlanner(object):
         return L_pos*weights[0] + L_angle*weights[1] + L_obstacle*weights[2]
 
     def goal_sampling(self):
-        # sample_timestamp = np.random.choice(self.timestamps[1:])
+        sample_timestamp = np.random.choice(self.timestamps[1:])
         # sample_timestamp = np.random.choice(self.timestamps[max(1, self.tree.max_timestamp-20):self.tree.max_timestamp+30])
-        sample_timestamp = np.random.choice(self.timestamps[max(1, self.tree.max_timestamp-10):self.tree.max_timestamp+30]) #CURRENTLY USING
+        # sample_timestamp = np.random.choice(self.timestamps[max(1, self.tree.max_timestamp-10):self.tree.max_timestamp+30]) #CURRENTLY USING
         # sample_timestamp = np.random.choice(self.timestamps[1:])
         sample_config = self.gripper_configs[sample_timestamp]
         theta0 = np.array([-np.deg2rad(150), 0, 0, 0])
