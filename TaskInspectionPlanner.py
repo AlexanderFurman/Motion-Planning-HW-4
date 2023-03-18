@@ -9,7 +9,7 @@ import matplotlib.image as mpimg
 import copy
 
 # np.random.seed(1)
-np.random.seed(2)
+# np.random.seed(2)
 
 class TaskInspectionPlanner(object):
 
@@ -28,7 +28,7 @@ class TaskInspectionPlanner(object):
         self.goal_prob = params['goal_prob']
         self.coverage = coverage
         self.step_size = 0.5
-        self.exploration_to_exploitation = 0.5
+        # self.exploration_to_exploitation = 0.5
 
         #other robot's configs
         self.gripper_configs = self.planning_env.gripper_plan
@@ -69,10 +69,10 @@ class TaskInspectionPlanner(object):
         while self.tree.max_coverage < self.coverage and (time.time() - start_time) < 60:
 
             new_config = np.array([np.random.uniform(-np.pi, np.pi) for _ in range(self.planning_env.insp_robot.dim)])
-            new_timestamp = np.random.choice(self.timestamps[1:])
+            # new_timestamp = np.random.choice(self.timestamps[1:])
 
             # new_timestamp = np.random.choice(self.timestamps[max(1, self.tree.max_timestamp-20):self.tree.max_timestamp+30])
-            # new_timestamp = np.random.choice(self.timestamps[max(1, self.tree.max_timestamp-10):self.tree.max_timestamp+30]) #CURRENTLY USING
+            new_timestamp = np.random.choice(self.timestamps[max(1, self.tree.max_timestamp-10):self.tree.max_timestamp+30]) #CURRENTLY USING
             # new_timestamp = np.random.choice(self.timestamps[1:])
 
             flag = False
@@ -81,7 +81,7 @@ class TaskInspectionPlanner(object):
                 new_config, new_timestamp = self.goal_sampling()
                 flag = True
 
-            near_config_idx, near_config, near_timestamp = self.tree.get_nearest_config(new_config, new_timestamp)
+            near_config_idx, near_config, near_timestamp = self.tree.get_nearest_config(new_config, new_timestamp, self.timestamps[-1])
 
             extended_config, extended_timestamp = self.extend(near_config, new_config, near_timestamp, new_timestamp)
             # print(f'extended config = {extended_config}, extended timestamp = {extended_timestamp}')
@@ -123,8 +123,8 @@ class TaskInspectionPlanner(object):
                 self.find_inspected_from_edge(self.tree.vertices[near_config_idx], self.tree.vertices[extended_config_idx])
                 
                 rewired_coverage = False
-                if extended_config_idx in self.saved_configs:
-                    rewired_coverage = self.rewire(extended_config_idx)
+                # if extended_config_idx in self.saved_configs:
+                #     rewired_coverage = self.rewire(extended_config_idx)
                     
 
                 if self.tree.max_coverage > self.current_coverage or rewired_coverage:
@@ -367,9 +367,9 @@ class TaskInspectionPlanner(object):
         return L_pos*weights[0] + L_angle*weights[1] + L_obstacle*weights[2]
 
     def goal_sampling(self):
-        sample_timestamp = np.random.choice(self.timestamps[1:])
+        # sample_timestamp = np.random.choice(self.timestamps[1:])
         # sample_timestamp = np.random.choice(self.timestamps[max(1, self.tree.max_timestamp-20):self.tree.max_timestamp+30])
-        # sample_timestamp = np.random.choice(self.timestamps[max(1, self.tree.max_timestamp-10):self.tree.max_timestamp+30]) #CURRENTLY USING
+        sample_timestamp = np.random.choice(self.timestamps[max(1, self.tree.max_timestamp-10):self.tree.max_timestamp+30]) #CURRENTLY USING
         # sample_timestamp = np.random.choice(self.timestamps[1:])
         sample_config = self.gripper_configs[sample_timestamp]
         theta0 = np.array([-np.deg2rad(150), 0, 0, 0])

@@ -80,7 +80,7 @@ class RRTTree(object):
             return valid_idxs[0]
         return None
 
-    def get_nearest_config(self, config, timestamp):
+    def get_nearest_config(self, config, timestamp, max_timestamp):
         '''
         Find the nearest vertex for the given config and returns its state index and configuration
         @param config Sampled configuration.
@@ -89,8 +89,8 @@ class RRTTree(object):
         dists = []
         for _, vertex in self.vertices.items():
             if vertex.timestamp < timestamp:
-                dists.append(self.planning_env.insp_robot.compute_distance(config, vertex.config))
-                # dists.append(self.compute_distance_with_time(vertex.config, vertex.timestamp, config, timestamp))
+                # dists.append(self.planning_env.insp_robot.compute_distance(config, vertex.config))
+                dists.append(self.compute_distance_with_time(vertex.config, vertex.timestamp, config, timestamp, max_timestamp))
             else:
                 dists.append(1000000000)
         # retrieve the id of the nearest vertex
@@ -105,8 +105,7 @@ class RRTTree(object):
     def compute_union(self, inspected_points_1, inspected_points_2):
         return list(set(inspected_points_1 + inspected_points_2))
 
-    def compute_distance_with_time(self, config1, timestamp1, config2, timestamp2):
-        total_timestamps = 370 
+    def compute_distance_with_time(self, config1, timestamp1, config2, timestamp2, total_timestamps):
         # vec1 = np.append(config1, 2*np.pi*timestamp1/total_timestamps)
         # vec2 = np.append(config2, 2*np.pi*timestamp2/total_timestamps)
         vec1 = np.append(config1, np.pi*timestamp1/total_timestamps)

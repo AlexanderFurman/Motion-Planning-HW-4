@@ -58,8 +58,8 @@ def get_stats(json_file):
 
 if __name__=='__main__':
     planner = create_planner('map_plan_p2.json')
-    get_data(planner, 'stats_E2_20.json')
-    # get_stats('stats.json')
+    get_data(planner, 'stats_E2_20_shmeeejson')
+    # get_stats('stats_E2_20_beam.json')
     
 
     
