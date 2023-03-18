@@ -6,9 +6,10 @@ from copy import deepcopy
 from scipy.optimize import minimize
 from matplotlib import pyplot as plt
 import matplotlib.image as mpimg
+import copy
 
 # np.random.seed(1)
-# np.random.seed(2)
+np.random.seed(2)
 
 class TaskInspectionPlanner(object):
 
@@ -27,6 +28,7 @@ class TaskInspectionPlanner(object):
         self.goal_prob = params['goal_prob']
         self.coverage = coverage
         self.step_size = 0.5
+        self.exploration_to_exploitation = 0.5
 
         #other robot's configs
         self.gripper_configs = self.planning_env.gripper_plan
@@ -57,7 +59,7 @@ class TaskInspectionPlanner(object):
         # initialize an empty plan.
         # plan_configs, plan_timestamps = [], []
 
-        path_cost, computation_time, coverage = [], [], []
+        path_cost, computation_time, coverage = [0], [0], [0]
 
 
         #add start node
@@ -91,13 +93,15 @@ class TaskInspectionPlanner(object):
             no_collision = (self.planning_env.config_validity_checker(extended_config, 'inspector') and self.planning_env.edge_validity_checker(near_config, extended_config, 'inspector'))
             if no_collision:
                 # if flag == True:
-                    # print('adding goal to tree!')
+                #     print('adding goal to tree!')
 
                 # print('in here!')
 
+                save_flag = False
                 old_inspected_timestamps = self.tree.vertices[near_config_idx].inspected_timestamps
                 if self.planning_env.is_gripper_inspected_from_vertex(extended_config, extended_timestamp):
                     current_inspected_timestamps = self.tree.compute_union(old_inspected_timestamps, [extended_timestamp])
+                    save_flag = True
                 else:
                     current_inspected_timestamps = deepcopy(old_inspected_timestamps)
 
@@ -109,16 +113,24 @@ class TaskInspectionPlanner(object):
                     # print(f'new vertex info: \n timestamp: {extended_timestamp} \n inspected timestamps: {current_inspected_timestamps}\n')
 
                 extended_config_idx = self.tree.add_vertex(extended_config, extended_timestamp, inspected_timestamps=current_inspected_timestamps)
+                if save_flag:
+                    self.save_config(extended_config_idx)
                 edge_cost = np.linalg.norm(near_config - extended_config) #POSSIBLY CHANGE THIS
                 self.tree.add_edge(near_config_idx, extended_config_idx, edge_cost)
 
                 # print(f'parent timestamp = {near_timestamp}, extended_timestamp = {extended_timestamp}')
 
                 self.find_inspected_from_edge(self.tree.vertices[near_config_idx], self.tree.vertices[extended_config_idx])
+                
+                rewired_coverage = False
+                if extended_config_idx in self.saved_configs:
+                    rewired_coverage = self.rewire(extended_config_idx)
+                    
 
-                if self.tree.max_coverage > self.current_coverage:
+                if self.tree.max_coverage > self.current_coverage or rewired_coverage:
                     print(f"current max coverage is {self.tree.max_coverage}")
                     self.current_coverage = self.tree.max_coverage
+                    # self.save_config(extended_config_idx)
 
                     # store total path cost and time
                     path_cost.append(self.compute_cost(self.find_plan()[0]))
@@ -157,8 +169,8 @@ class TaskInspectionPlanner(object):
             plan_cost += self.planning_env.insp_robot.compute_distance(plan[i], plan[i+1])
         return plan_cost
 
-    def save_config(self, config):
-        self.saved_configs.append(config)
+    def save_config(self, config_idx):
+        self.saved_configs.append(config_idx)
         
 
 
@@ -186,6 +198,97 @@ class TaskInspectionPlanner(object):
         extended_timestamp = near_timestamp + int(np.ceil((ext_length/length)*(rand_timestamp-near_timestamp)))
 
         return extended_config, extended_timestamp
+
+    def rewire(self, new_vertex_idx):
+
+        new_inspected_timestamps = list(set(self.tree.vertices[new_vertex_idx].inspected_timestamps) - set(self.tree.vertices[self.tree.edges[new_vertex_idx]].inspected_timestamps))
+        max_idx = copy.deepcopy(self.tree.max_coverage_id)
+        current_idx = self.tree.max_coverage_id
+        start_idx = self.tree.get_root_id()
+        rewiring_success = False
+
+        if self.tree.vertices[current_idx].timestamp < self.tree.vertices[new_vertex_idx].timestamp and np.linalg.norm(self.tree.vertices[current_idx].config - self.tree.vertices[new_vertex_idx].config) < self.step_size*2:
+            # print('in here 1')
+            rewiring_success = self.attempt_rewire(new_inspected_timestamps, new_vertex_idx, current_idx)
+        
+        if rewiring_success:
+            print('success!')
+            v_coverage = self.tree.compute_coverage(inspected_timestamps=self.tree.vertices[current_idx].inspected_timestamps)
+            if v_coverage > self.tree.max_coverage:
+                self.tree.max_coverage = v_coverage
+                self.tree.max_coverage_id = current_idx
+            return True
+            
+        while current_idx != start_idx:
+            # print('in here 2')
+            timestamp_correct = (self.tree.vertices[current_idx].timestamp > self.tree.vertices[new_vertex_idx].timestamp) and (self.tree.vertices[self.tree.edges[current_idx]].timestamp < self.tree.vertices[new_vertex_idx].timestamp)
+            close_enough = np.linalg.norm(self.tree.vertices[current_idx].config - self.tree.vertices[new_vertex_idx].config) < self.step_size*2
+            if timestamp_correct and self.tree.vertices[current_idx] not in self.saved_configs and close_enough:
+                rewiring_success = self.attempt_rewire(new_inspected_timestamps, new_vertex_idx, self.tree.edges[current_idx], current_idx)
+                if rewiring_success:
+                    print('success!')
+                    
+                    current = max_idx
+                    while current != current_idx:
+                        self.tree.vertices[current].inspected_timestamps = self.tree.compute_union(self.tree.vertices[current].inspected_timestamps, new_inspected_timestamps)
+                        v_coverage = self.tree.compute_coverage(inspected_timestamps=self.tree.vertices[current].inspected_timestamps)
+                        if v_coverage > self.tree.max_coverage:
+                            self.tree.max_coverage = v_coverage
+                            self.tree.max_coverage_id = current
+
+                        current = self.tree.edges[current]
+
+                    return True
+            current_idx = self.tree.edges[current_idx]
+        
+        return False
+        
+        
+
+
+    def attempt_rewire(self, new_inspected_timestamps, new_vertex_idx, parent_vertex_idx, child_vertex_idx=None):
+        new_config = self.tree.vertices[new_vertex_idx].config
+        parent_config = self.tree.vertices[parent_vertex_idx].config
+
+        if child_vertex_idx is None:
+            no_collision = self.planning_env.edge_validity_checker(parent_config, new_config, 'inspector')
+
+            if no_collision:
+
+                self.tree.edges.pop(new_vertex_idx)
+                self.tree.vertices[new_vertex_idx].inspected_timestamps = self.tree.compute_union(self.tree.vertices[parent_vertex_idx].inspected_timestamps, new_inspected_timestamps)
+
+                edge_cost = np.linalg.norm(new_config - parent_config) #POSSIBLY CHANGE THIS
+                self.tree.add_edge(parent_vertex_idx, new_vertex_idx, edge_cost)
+                self.find_inspected_from_edge(self.tree.vertices[parent_vertex_idx], self.tree.vertices[new_vertex_idx])
+
+                return True
+
+            
+        else:
+            child_config = self.tree.vertices[child_vertex_idx].config
+            no_collision = self.planning_env.edge_validity_checker(new_config, child_config, 'inspector') and self.planning_env.edge_validity_checker(parent_config, new_config, 'inspector')
+
+            if no_collision:
+                self.tree.edges.pop(new_vertex_idx)
+                self.tree.vertices[new_vertex_idx].inspected_timestamps = self.tree.compute_union(self.tree.vertices[parent_vertex_idx].inspected_timestamps, new_inspected_timestamps)
+
+
+                edge_cost = np.linalg.norm(new_config - parent_config) #POSSIBLY CHANGE THIS
+                self.tree.add_edge(parent_vertex_idx, new_vertex_idx, edge_cost)
+                self.find_inspected_from_edge(self.tree.vertices[parent_vertex_idx], self.tree.vertices[new_vertex_idx])
+                
+                edge_cost = np.linalg.norm(new_config - child_config)
+                self.tree.add_edge(new_vertex_idx, child_vertex_idx)
+                self.find_inspected_from_edge(self.tree.vertices[new_vertex_idx], self.tree.vertices[child_vertex_idx])
+
+                return True
+        
+        return False
+
+
+
+        
 
     def find_plan(self):
         start_idx = self.tree.get_root_id()
@@ -249,7 +352,7 @@ class TaskInspectionPlanner(object):
         # if L_pos <= 1:
         #     L_pos = 0
 
-        L_angle= abs(np.arcsin((np.cross(vec_grip_to_camera, vec_grip_to_link))/(np.linalg.norm(vec_grip_to_link)*np.linalg.norm(vec_grip_to_camera)))) / self.planning_env.insp_robot.ee_fov
+        L_angle= abs(np.arcsin((np.cross(vec_grip_to_camera, vec_grip_to_link))/(np.linalg.norm(vec_grip_to_link)*np.linalg.norm(vec_grip_to_camera)))) / (0.5*self.planning_env.insp_robot.ee_fov)
         # if L_angle < self.planning_env.insp_robot.ee_fov:
         #     L_angle = 0
 
@@ -273,26 +376,27 @@ class TaskInspectionPlanner(object):
         bounds = [(-np.pi, np.pi) for _ in range(self.planning_env.insp_robot.dim)]
         result = minimize(fun=self.loss_function, x0=theta0, args=(sample_config, sample_timestamp), bounds=bounds)
         return result.x, sample_timestamp
-
-
-
-
-
-    def goal_sampling_example(self):
-        sample_timestamp = np.random.randint(1, self.timestamps[-1])
-        sample_config = self.gripper_configs[sample_timestamp]
-        theta0 = np.array([-np.deg2rad(150), 0, 0, 0])
-        bounds = [(-np.pi, np.pi) for _ in range(self.planning_env.insp_robot.dim)]
-        result = minimize(fun=self.loss_function, x0=theta0, args=(sample_config, ), bounds=bounds)
         
-        self.planning_env.visualize_map(gripper_config=sample_config, inspector_config=result.x)
+
+
+
+
+
+    # def goal_sampling_example(self):
+    #     sample_timestamp = np.random.randint(1, self.timestamps[-1])
+    #     sample_config = self.gripper_configs[sample_timestamp]
+    #     theta0 = np.array([-np.deg2rad(150), 0, 0, 0])
+    #     bounds = [(-np.pi, np.pi) for _ in range(self.planning_env.insp_robot.dim)]
+    #     result = minimize(fun=self.loss_function, x0=theta0, args=(sample_config, ), bounds=bounds)
         
-        grip_pos = self.planning_env.grip_robot.compute_forward_kinematics(sample_config)[-1]
-        insp_pos = self.planning_env.insp_robot.compute_forward_kinematics(result.x)[-1]
-        distance = np.linalg.norm(grip_pos-insp_pos)
-        print('DISTANCE = ', distance)
-        print('CAN HE SEE GRIPGRIP??? ', (distance < self.planning_env.insp_robot.vis_dist))
-        print('YE BUT LIKE< REALLY??< ', self.planning_env.config_validity_checker(result.x, 'inspector'))
-        print(result)
-        return self.planning_env.is_gripper_inspected_from_vertex(result.x, sample_timestamp)
+    #     self.planning_env.visualize_map(gripper_config=sample_config, inspector_config=result.x)
+        
+    #     grip_pos = self.planning_env.grip_robot.compute_forward_kinematics(sample_config)[-1]
+    #     insp_pos = self.planning_env.insp_robot.compute_forward_kinematics(result.x)[-1]
+    #     distance = np.linalg.norm(grip_pos-insp_pos)
+    #     print('DISTANCE = ', distance)
+    #     print('CAN HE SEE GRIPGRIP??? ', (distance < self.planning_env.insp_robot.vis_dist))
+    #     print('YE BUT LIKE< REALLY??< ', self.planning_env.config_validity_checker(result.x, 'inspector'))
+    #     print(result)
+    #     return self.planning_env.is_gripper_inspected_from_vertex(result.x, sample_timestamp)
 

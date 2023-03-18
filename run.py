@@ -18,7 +18,7 @@ if __name__ == "__main__":
     # # setup and execute the planner
     # planner = TaskInspectionPlanner(planning_env=planning_env, coverage=args.coverage)
     # plan, plan_timestamps, path_coverage, path_cost, computation_time = planner.plan()
-    planning_env = MapEnvironment(json_file='map_plan_p1.json')
+    planning_env = MapEnvironment(json_file='map_plan_p2.json')
     # planning_env.visualize_map(gripper_config=None, inspector_config=None, show_map=True)
     planner = TaskInspectionPlanner(planning_env=planning_env, coverage=0.9)
     plan, plan_timestamps, path_coverage, path_cost, computation_time = planner.plan()
